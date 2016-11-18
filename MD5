@@ -1,0 +1,13 @@
+27517f45bf3c472fedf838a43862ba67 *DESCRIPTION
+aa6e271116ac7353b62e7508f83fda03 *NAMESPACE
+53b5102ced985a82faa1d5f0989849f0 *R/RBMRB.R
+f423a7ecceac81593bdb68eeaeabbd46 *man/HSQC_13C.Rd
+704009dec4fcca139bfab9c642c1e645 *man/HSQC_15N.Rd
+4555e7293f9b5325f572020723af998c *man/TOCSY.Rd
+451a76cdbd052da026fb6271bb6c79bd *man/chemical_shift_corr.Rd
+da54aa4fc483edb9e2927bc1b3fca896 *man/convert_cs_to_c13hsqc.Rd
+18b2d261968be49490514eed050202e3 *man/convert_cs_to_n15hsqc.Rd
+8f4c9b78fa2efb17f388092d05fc7e58 *man/convert_cs_to_tocsy.Rd
+e5f52293cddaeb993686850287517677 *man/fetch_atom_chemical_shifts.Rd
+e0000855d4cdcb573c64383bce7a7059 *man/fetch_entry_chemical_shifts.Rd
+23a145d128320eca91f3b865f9e2c8a7 *man/filter_residue.Rd
