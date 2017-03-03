@@ -1,6 +1,6 @@
-ff0a2c38e053777a30525471a5db439f *DESCRIPTION
-2e2f281a412751b5e3094f6ac3f8993e *NAMESPACE
-160e92ca7bdc02a1df99a5715e36755b *R/RBMRB.R
+bc9be7eae1fb286e197ba57d7cf57157 *DESCRIPTION
+c9c9bce0b7577c2f515529ec50eaa40f *NAMESPACE
+10e27873650426a5e6299c9d6129682f *R/RBMRB.R
 f423a7ecceac81593bdb68eeaeabbd46 *man/HSQC_13C.Rd
 704009dec4fcca139bfab9c642c1e645 *man/HSQC_15N.Rd
 4555e7293f9b5325f572020723af998c *man/TOCSY.Rd
@@ -10,7 +10,9 @@ f423a7ecceac81593bdb68eeaeabbd46 *man/HSQC_13C.Rd
 3a0e606dadccf984f887fc9caaa29ef4 *man/convert_cs_to_c13hsqc.Rd
 18b2d261968be49490514eed050202e3 *man/convert_cs_to_n15hsqc.Rd
 8f4c9b78fa2efb17f388092d05fc7e58 *man/convert_cs_to_tocsy.Rd
+51505d71b2f26a84beb92cb26592f1d3 *man/export_star_data.Rd
 f7e33b0a65f06f55e374f0112a9107c9 *man/fetch_atom_chemical_shifts.Rd
 ce78d78db251a479c6ec044bb5422021 *man/fetch_entry_chemical_shifts.Rd
 d5131fb4cbb4396e43804130903e1582 *man/fetch_res_chemical_shifts.Rd
 23a145d128320eca91f3b865f9e2c8a7 *man/filter_residue.Rd
+d0251e4fcadd465eef1a14f1d4992417 *man/makeRandomString.Rd
