@@ -1,26 +1,25 @@
-#'Fetchs entry specific NMR chemical shift data from BMRB database
+#'Imports checmial shift table for a given entry id from BMRB data base
 #'
-#'Downloads NMR chemical shift data from BMRB database for a given Entry ID or list of Entry IDs
-#'@param BMRBidlist sinlge BMRB ID (or) list of BMRB IDs in csv format
-#'For metabolomics entries entry id should have 'bmse' prefix example: c('bmse000034','bmse000035','bmse000036')
-#'@return R data frame that contains  Atom_chem_shift data for a given list of entries
-#'@export fetch_entry_chemical_shifts
+#'Downloads NMR chemical shift data from BMRB database for a given Entry ID
+#'@param ID sinlge BMRB ID; For macromolecule entries it is just a number without bmrb prefix (example: 15060);
+#'For metabolomics entries it should have 'bmse' prefix (example: 'bmse000035')
+#'@return R data frame that contains  Atom_chem_shift data for a given entry ID
+#'@export fetch_entry_cs
 #'@examples
-#'df<-fetch_entry_chemical_shifts(15060)
-#'# Downloads NMR chemical shifts of a single entry from BMRB
-#'df<-fetch_entry_chemical_shifts(c(17074,17076,17077))
-#'# Downloads NMR chemical shifts of multiple entries from BMRB
-#'df<-fetch_entry_chemical_shifts(c('bmse000034','bmse000035','bmse000036'))
+#'df<-fetch_entry_cs(15060)
+#'# Downloads NMR chemical shifts of the given entry from macromolecule database
+#'df<-fetch_entry_cs('bmse000034')
 #'# Downloads data from BMRB metabolomics database
-#'@seealso \code{\link{fetch_atom_chemical_shifts}} and \code{\link{fetch_res_chemical_shifts}}
-fetch_entry_chemical_shifts<-function(BMRBidlist){
-  bmrb_apiurl_json<-"http://webapi.bmrb.wisc.edu/v1/jsonrpc"
-  query=rjson::toJSON(list(method='loop',jsonrpc='2.0',params=list(ids=BMRBidlist,keys=list('_Atom_chem_shift')),id=1))
-  rawdata<-httr::POST(bmrb_apiurl_json,encode='json',body=query)
+#'@seealso \code{\link{fetch_entry_chemical_shifts}},\code{\link{fetch_atom_chemical_shifts}} and \code{\link{fetch_res_chemical_shifts}}
+fetch_entry_cs<-function(ID){
+  if (length(ID)>1){
+    stop("This Function takes only one ID; Use fetch_entry_chemical_shifts for a list of IDs")
+  }
+  bmrb_apiurl<-paste0("http://webapi.bmrb.wisc.edu/v2/entry/",ID,"?loop=Atom_chem_shift")
+  rawdata<-httr::GET(bmrb_apiurl,httr::add_headers(Application = "RBMRB V2.1.0"))
   c<-rjson::fromJSON(httr::content(rawdata,'text',encoding = 'UTF-8'))
-  if (length(c$result)!=0){
-  for (x in c$result){
-    for (y in x$`_Atom_chem_shift`){
+  if (rawdata$status_code==200){
+    for (y in c[[1]][1]$`Atom_chem_shift`){
       if (is.null(y)){
         warnings('No Chemical shift list found')}
       else{
@@ -50,23 +49,64 @@ fetch_entry_chemical_shifts<-function(BMRBidlist){
           cs_data<-rbind(cs_data,csdata)}
         else{
           cs_data<-csdata}
-        }
       }
     }
     if (exists('cs_data')){
       cs_data$Val<-suppressWarnings(as.numeric(cs_data$Val))
       cs_data$Val_err<-suppressWarnings(as.numeric(cs_data$Val_err))
-      }
+    }
     else{
       warning('No data')
       cs_data<-NA}
-    }
+  }
   else{
-    warning('Entry not found')
+    warning(c$error)
     cs_data<-NA
   }
-
   return (cs_data)
+}
+
+
+
+
+#'Imports chemical shift table for a given entry or list of entries from BMRB data base
+#'
+#'Downloads NMR chemical shift data from BMRB database for a given Entry ID or list of Entry IDs
+#'@param IDlist sinlge BMRB ID (or) list of BMRB IDs in csv format; For macromolecule entries it is just a number without bmrb prefix (example: c(15060,15000,18867));
+#'For metabolomics entries it should have 'bmse' prefix (example: c('bmse000035','bmse000035','bmse000036'))
+#'@return R data frame that contains  Atom_chem_shift data for a given list of entries
+#'@export fetch_entry_chemical_shifts
+#'@examples
+#'df<-fetch_entry_chemical_shifts(15060)
+#'# Downloads NMR chemical shifts of a single entry from BMRB
+#'df<-fetch_entry_chemical_shifts(c(17074,17076,17077))
+#'# Downloads NMR chemical shifts of multiple entries from BMRB
+#'df<-fetch_entry_chemical_shifts(c('bmse000034','bmse000035','bmse000036'))
+#'# Downloads data from BMRB metabolomics database
+#'@seealso \code{\link{fetch_atom_chemical_shifts}},\code{\link{fetch_entry_cs}} and \code{\link{fetch_res_chemical_shifts}}
+fetch_entry_chemical_shifts<-function(IDlist){
+  for (bid in IDlist){
+    csdata<-fetch_entry_cs(bid)
+    if (all(is.na(csdata))){
+      warning("Entry not found")
+    }
+    else{
+      if (exists('cs_data') & exists('csdata')){
+        if (length(colnames(cs_data)) != length(colnames(csdata))){
+          common_col<-intersect(colnames(cs_data),colnames(csdata))
+          cs_data<-subset(cs_data,select=common_col)
+          csdata<-subset(csdata,select=common_col)
+          warning("Entries have differnet columns;mismatch will be removed")
+        }
+        cs_data<-rbind(cs_data,csdata)}
+      else{
+        cs_data<-csdata}
+    }}
+  if (exists('cs_data')==F){
+    cs_data=NA
+  }
+
+  return(cs_data)
 }
 
 #'Generates random string of fixed length(for internal use in RBMRB)
@@ -89,7 +129,7 @@ makeRandomString <- function()
 
 #'Exports NMR-STAR file to BMRB API server
 #'
-#'Exports NMR-STAR file to BMRB API server, so that local data can be visualized using RBMRB library. This function will return a tocken, which can be used to access the data through RBMRB package. The tocken will expire after 7 days
+#'Exports NMR-STAR file to BMRB API server for data visualization.  This function will return a tocken, which can be used like a pseudo BMRB ID. The tocken will expire after 7 days
 #'@param filename filename with correct path
 #'@return Temporary tocken to access the file
 #'@export export_star_data
@@ -98,14 +138,14 @@ makeRandomString <- function()
 #'# Exports hpr.str file to BMRB API server and gets a temporary tocken
 #'@seealso \code{\link{fetch_atom_chemical_shifts}}, \code{\link{fetch_entry_chemical_shifts}} \code{\link{fetch_res_chemical_shifts}}
 export_star_data<-function(filename){
-  bmrb_apiurl_json<-"http://webapi.bmrb.wisc.edu/v1/jsonrpc"
+  bmrb_apiurl<-"http://webapi.bmrb.wisc.edu/v2/entry/"
   query=rjson::toJSON(list(method='store',jsonrpc='2.0',params=list(data=readChar(filename, file.info(filename)$size)),id=1))
-  rawdata<-httr::POST(bmrb_apiurl_json,encode='json',body=query)
+  rawdata<-httr::POST(bmrb_apiurl,body=readChar(filename, file.info(filename)$size),httr::add_headers(Application = "RBMRB V2.1.0"))
   c<-rjson::fromJSON(httr::content(rawdata,'text',encoding = 'UTF-8'))
-  if (length(c$result)!=0){
-    ent_id<-c$result$entry_id
+  if (length(c)!=0){
+    ent_id<-c$entry_id
     print(paste("Please note down the ID",ent_id,sep=":"))
-    print(paste("ID will expire on ", as.POSIXct(c$result$expiration, origin = "1970-01-01"),sep=" "))
+    print(paste("ID will expire on ", as.POSIXct(c$expiration, origin = "1970-01-01"),sep=" "))
   }
   else{
     warning('Entry not found')
@@ -115,22 +155,22 @@ export_star_data<-function(filename){
 }
 
 
-#'Fetchs atom specific NMR chemical shift data from BMRB database
+#'Imports all chemical shifts of a given atom from BMRB database
 #'
-#'Downloads the full list of chemical shifts from BMRB macromolecular/metabolomics database for a given atom
-#'@param atom atom name in NMR-STAR atom nomenclature ; Example: CA,CB2
+#'Downloads the full chemical shift data from BMRB macromolecules/metabolomics database for a given atom
+#'@param atom atom name in NMR-STAR atom nomenclature ; Example: CA,CB2; default * (all atoms)
 #'@param db macromolecules, metabolomics (optional, by default will fetch from macromolecules database)
 #'@return R data frame that contains full chemical shift list for a given atom
 #'@export fetch_atom_chemical_shifts
 #'@examples
-#'df<-fetch_atom_chemical_shifts('CG2','macromolecules')
+#'#df<-fetch_atom_chemical_shifts('CG2','macromolecules')
 #'# Downloads CB2 chemical shifts from macromolecules database at BMRB
-#'df<-fetch_atom_chemical_shifts('C1','metabolomics')
+#'#df<-fetch_atom_chemical_shifts('C1','metabolomics')
 #'# Downloads C1 chemical shifts from metabolomics database at BMRB
-#'@seealso \code{\link{fetch_entry_chemical_shifts}},\code{\link{fetch_res_chemical_shifts}},\code{\link{filter_residue}} and \code{\link{chemical_shift_corr}}
-fetch_atom_chemical_shifts<-function(atom,db='macromolecules'){
-  bmrb_api<-"http://webapi.bmrb.wisc.edu/"
-  raw_data<-httr::GET(bmrb_api,path=paste0("/v1/rest/chemical_shifts/",atom,"/",db))
+#'@seealso \code{\link{fetch_entry_chemical_shifts}},\code{\link{fetch_res_chemical_shifts}},\code{\link{filter_residue}} and \code{\link{chem_shift_corr}} and \code{\link{atom_chem_shift_corr}}
+fetch_atom_chemical_shifts<-function(atom="*",db='macromolecules'){
+  bmrb_api<-paste0("http://webapi.bmrb.wisc.edu/v2/search/chemical_shifts?atom_id=",atom,"&database=",db)
+  raw_data<-httr::GET(bmrb_api,httr::add_headers(Application = "RBMRB V2.1.0"))
   dat<-httr::content(raw_data,'parsed')
   if (length(dat$data)==0){
     warning('Atom or db wrong')
@@ -148,11 +188,11 @@ fetch_atom_chemical_shifts<-function(atom,db='macromolecules'){
   return(dat_frame)
 }
 
-#'Fetchs residue specific NMR chemical shift data from BMRB database
+#'Imports chemical shift data for a given amino acid/nucleic acid
 #'
-#'Downloads the full list of chemical shifts from BMRB macromolecular database for a given amino acid (or) nucleic acid. Optionally particular atom can be specified in the parameter
-#'@param res residue name in NMR-STAR atom nomenclature ; Example: ALA,GLY ; default '*' (includes everything)
-#'@param atm atom name in NMR-STAR nomenclautre ; Example :CA,HB2; default * (includes all atoms)
+#'Downloads chemical shift data from BMRB macromolecular database for a given amino acid (or) nucleic acid. Optionally particular atom can be specified in the parameter
+#'@param res residue name in NMR-STAR atom nomenclature ; Example: ALA,GLY ; default '*' (all residues)
+#'@param atm atom name in NMR-STAR nomenclautre ; Example :CA,HB2; default * (all atoms)
 #'@return R data frame that contains full chemical shift list for a given atom
 #'@export fetch_res_chemical_shifts
 #'@examples
@@ -162,46 +202,26 @@ fetch_atom_chemical_shifts<-function(atom,db='macromolecules'){
 #'# Downloads C alpha chemical shifts of ALA from macromolecules database at BMRB
 #'@seealso \code{\link{fetch_atom_chemical_shifts}},\code{\link{filter_residue}} and \code{\link{chemical_shift_hist}}
 fetch_res_chemical_shifts<-function(res='*',atm='*'){
-  res=gsub('[*]','%',res)
-  atm=gsub('[*]','%',atm)
-  if (res=='*'){res="%"}
-  if (atm=='*'){atm="%"}
-  bmrb_apiurl_json<-"http://webapi.bmrb.wisc.edu/v1/jsonrpc"
-  query=rjson::toJSON(list(method='select',
-                           jsonrpc='2.0',
-                           params=list(database='macromolecules',
-                                       query=list(where=list(Comp_ID=res,Atom_ID=atm),
-                                                  select=list('Entry_ID','Entity_ID','Entity_assembly_ID','Comp_index_ID','Comp_ID','Atom_ID','Atom_type','Val','Val_err','Assigned_chem_shift_list_ID'),
-                                                  hash='false',
-                                                  from='Atom_chem_shift')),
-                           id=1))
-  rawdata<-httr::POST(bmrb_apiurl_json,encode='json',body=query)
-  dat<-httr::content(rawdata,'parsed')
-  if (length(dat$result)==0){
+  if (res=="*"){
+    dat_frame<-fetch_atom_chemical_shifts(atm)
+  }else{
+  db='macromolecules'
+  bmrb_api<-paste0("http://webapi.bmrb.wisc.edu/v2/search/chemical_shifts?comp_id=",res,"&atom_id=",atm,"&database=",db)
+  raw_data<-httr::GET(bmrb_api,httr::add_headers(Application = "RBMRB V2.1.0"))
+  dat<-httr::content(raw_data,'parsed')
+  if (length(dat$data)==0){
     warning('Atom or db wrong')
     dat_frame<-NA
   }else{
-    dat_frame<-data.table::as.data.table(dat$result)
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Entry_ID"]="Entry_ID"
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Entity_ID"]="Entity_ID"
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Entity_assembly_ID"]="Entity_assembly_ID"
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Comp_index_ID"]="Comp_index_ID"
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Comp_ID"]="Comp_ID"
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Atom_ID"]="Atom_ID"
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Atom_type"]="Atom_type"
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Val"]="Val"
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Val_err"]="Val_err"
-    names(dat_frame)[names(dat_frame)=="Atom_chem_shift.Assigned_chem_shift_list_ID"]="Assigned_chem_shift_list_ID"
-    dat_frame$Val=suppressWarnings(as.numeric(dat_frame$Val))
-    dat_frame$Val_err=suppressWarnings(as.character(dat_frame$Val_err))
-    dat_frame$Atom_ID=suppressWarnings(as.character(dat_frame$Atom_ID))
-    dat_frame$Comp_ID=suppressWarnings(as.character(dat_frame$Comp_ID))
-    dat_frame$Entry_ID=suppressWarnings(as.character(dat_frame$Entry_ID))
-    dat_frame$Entity_ID=suppressWarnings(as.character(dat_frame$Entity_ID))
-    dat_frame$Entity_assembly_ID=suppressWarnings(as.character(dat_frame$Entity_assembly_ID))
-    dat_frame$Comp_index_ID=suppressWarnings(as.numeric(dat_frame$Comp_index_ID))
-    dat_frame$Atom_type=suppressWarnings(as.character(dat_frame$Atom_type))
-    dat_frame$Assigned_chem_shift_list_ID=suppressWarnings(as.character(dat_frame$Assigned_chem_shift_list_ID))
+    dat_tab<-data.table::as.data.table(dat$data)
+    dat_frame<-as.data.frame(data.table::data.table(t(dat_tab)))
+    for (name in names(dat_frame)){dat_frame[[name]]<-unlist(as.character(dat_frame[[name]]))}
+    dat_tags<-as.data.frame(data.table::data.table(t(data.table::as.data.table(dat$columns))))
+    for (i in 1:length(dat_tags$V1)){dat_tags$V1[i]<-strsplit(dat_tags$V1[i],"[.]")[[1]][2]}
+    colnames(dat_frame)<-dat_tags$V1
+    dat_frame$Val<-suppressWarnings(as.numeric(dat_frame$Val))
+    dat_frame$Val_err<-suppressWarnings(as.numeric(dat_frame$Val_err))
+  }
   }
   return(dat_frame)
 }
@@ -591,60 +611,209 @@ convert_cs_to_c13hsqc<-function(csdf){
 }
 
 
+#'Plots chemical shift distribution of all atoms of a given amino acid
+#'
+#'Plots the histogram (or) density of  chemical shift distribution of  all atoms of a given amino acid (or) nucleic acid from BMRB database.
+#'@param res residue name in NMR-STAR atom nomenclature ; Example: ALA,GLY
+#'@param type count ; other than count will assume density plot
+#'@param cutoff values not with in the cutoff time standard deviation from both sides ofthe mean will be excluded from the plot;default value 8
+#'@param interactive TRUE/FALSE default TRUE
+#'@return R plot object
+#'@export chemical_shift_hist_res
+#'@examples
+#'#plt<-chemical_shift_hist_res('ALA')
+#'#plots the histogram of all atoms of ALA
+#'#plt<-chemical_shift_hist('GLY',type='density')
+#'#plots the density plot
+#'@importFrom plotly %>%
+#'@seealso \code{\link{fetch_res_chemical_shifts}},\code{\link{filter_residue}} and \code{\link{chem_shift_corr}} and \code{\link{atom_chem_shift_corr}}
+chemical_shift_hist_res<-function(res='*',type='count',cutoff=8,interactive=TRUE){
+    cs_dat2<-fetch_res_chemical_shifts(res)
+  with(cs_dat2,{
+    cs_dat2$Mean=NA
+    cs_dat2$SD=NA
+
+    if (all(is.na(cs_dat2))){
+      return(NA)
+    }else{
+      for (atom in unique(cs_dat2$Atom_ID)){
+        ss<-stats::sd(subset(cs_dat2,Atom_ID==atom)$Val)
+        m<-mean(subset(cs_dat2,Atom_ID==atom)$Val)
+        cs_dat2$Mean[cs_dat2$Atom_ID == atom] = m
+        cs_dat2$SD[cs_dat2$Atom_ID == atom] = ss
+        min_val<-m-(ss*cutoff)
+        max_val<-m+(ss*cutoff)
+
+        if (exists('cs_dat')){
+          cs_dat<-rbind(cs_dat,subset(cs_dat2, Atom_ID == atom & Val>=min_val & Val<=max_val))
+        }else{
+          cs_dat<-subset(cs_dat2, Atom_ID == atom & Val>=min_val & Val<=max_val)
+        }
+      }
+      cs_dat$Info = paste0("Mean=",round(cs_dat$Mean,2),";","SD=",round(cs_dat$SD,2))
+      if (type=='count'){
+        if (interactive){
+          plt<-plotly::plot_ly(x = cs_dat$Val,type = "histogram", color = cs_dat$Atom_ID,alpha = 0.7, text = cs_dat$Info) %>% plotly::layout(barmode = "overlay")
+        }
+        else{
+         plt<-ggplot2::ggplot(cs_dat)+
+           ggplot2::geom_histogram(ggplot2::aes(x=Val,color=Atom_ID,fill=Atom_ID),binwidth=0.1,position = 'identity',alpha=0.7)+
+           ggplot2::xlab("Chemical shift")+
+           ggplot2::ylab("Count")+
+           ggplot2::labs(color="",fill="")
+        }
+      } else{
+        if (interactive) {
+          plt<-plotly::plot_ly(x = cs_dat$Val,type = "histogram",color = cs_dat$Atom_ID,histnorm = "probability",alpha = 0.7, text = cs_dat$Info) %>% plotly::layout(barmode = "overlay")
+        }
+        else{
+         plt<-ggplot2::ggplot(cs_dat)+
+           ggplot2::geom_density(ggplot2::aes(x=Val,color=Atom_ID,fill=Atom_ID),alpha=0.7,trim=T)+
+           ggplot2::xlab("Chemical shift")+
+           ggplot2::ylab("Density")+
+           ggplot2::labs(color="",fill="")
+        }
+      }
+
+    }
+    return(plt)
+  })
+}
+
+
+
+
+
+
+
 
 
 #'Plots chemical shift distribution
 #'
-#'Plots the histogram (or) density of  chemical shift distribution of a given amino acid (or) nucleic acid from BMRB database.  Optionally particular atom can be specified in the parameter
+#'Plots the histogram (or) density of  chemical shift distribution of a given atom from amino acid (or) nucleic acid from BMRB database.  Optionally particular atom can be specified in the parameter
 #'@param res residue name in NMR-STAR atom nomenclature ; Example: ALA,GLY ; default '*' (includes everything)
 #'@param atm atom name in NMR-STAR nomenclautre ; Example :CA,HB2 default '*' (includes all atoms)
 #'@param type count ; other than count will assume density plot
 #'@param bw binwith for histogram; default value 0.1ppm
 #'@param cutoff values not with in the cutoff time standard deviation from both sides ofthe mean will be excluded from the plot;default value 8
-#'@param interactive TRUE/FALSE default TRUE
 #'@return R plot object
 #'@export chemical_shift_hist
 #'@examples
 #'#plt<-chemical_shift_hist('ALA')
 #'#plots the histogram of all atoms of ALA
+#'#plt<-chemical_shift_hist("*","CB*")
+#'#plots  CB chemical shift distribution of standard amino acids
 #'#plt<-chemical_shift_hist('GLY',type='density')
 #'#plots the density plot
-#'@seealso \code{\link{fetch_res_chemical_shifts}},\code{\link{filter_residue}} and \code{\link{chemical_shift_corr}}
-chemical_shift_hist<-function(res='*',atm='*',type='count',bw=0.1,cutoff=8,interactive=TRUE){
-  cs_dat2<-fetch_res_chemical_shifts(res,atm)
+#'@importFrom plotly %>%
+#'@seealso \code{\link{fetch_res_chemical_shifts}},\code{\link{filter_residue}} and \code{\link{chem_shift_corr}} and \code{\link{atom_chem_shift_corr}}
+chemical_shift_hist<-function(res='*',atm='*',type='count',bw=0.1,cutoff=8){
+  if (res=="*"){
+    cs_dat2<-filter_residue(fetch_atom_chemical_shifts(atm))
+  }else{
+  cs_dat2<-filter_residue(fetch_res_chemical_shifts(res,atm))
+  }
   with(cs_dat2,{
+    cs_dat2$Mean=NA
+    cs_dat2$SD=NA
+    cs_dat2$bins=NA
+    cs_dat2$UID=paste(cs_dat2$Comp_ID,"-",cs_dat2$Atom_ID)
   if (all(is.na(cs_dat2))){
     return(NA)
   }else{
+    if (atm == "*" & res == "*"){
+      for (atom in unique(cs_dat2$UID)){
+        ss<-stats::sd(subset(cs_dat2,UID==atom)$Val)
+        m<-mean(subset(cs_dat2,UID==atom)$Val)
+        cs_dat2$Mean[cs_dat2$UID == atom] = m
+        cs_dat2$SD[cs_dat2$UID == atom] = ss
+        min_val<-m-(ss*cutoff)
+        max_val<-m+(ss*cutoff)
+        cs_dat2$bins[cs_dat2$UID == atom]=(max_val-min_val)/bw
+        if (exists('cs_dat')){
+          cs_dat<-rbind(cs_dat,subset(cs_dat2, UID == atom & Val>=min_val & Val<=max_val))
+        }else{
+          cs_dat<-subset(cs_dat2, UID == atom & Val>=min_val & Val<=max_val)
+        }
+      }
+    }
+    else if (atm == "*"){
     for (atom in unique(cs_dat2$Atom_ID)){
       ss<-stats::sd(subset(cs_dat2,Atom_ID==atom)$Val)
       m<-mean(subset(cs_dat2,Atom_ID==atom)$Val)
+      cs_dat2$Mean[cs_dat2$Atom_ID == atom] = m
+      cs_dat2$SD[cs_dat2$Atom_ID == atom] = ss
       min_val<-m-(ss*cutoff)
       max_val<-m+(ss*cutoff)
+      cs_dat2$bins[cs_dat2$Atom_ID == atom]=(max_val-min_val)/bw
       if (exists('cs_dat')){
-        cs_dat<-rbind(cs_dat,subset(cs_dat2, Val>=min_val & Val<=max_val))
+        cs_dat<-rbind(cs_dat,subset(cs_dat2, Atom_ID == atom & Val>=min_val & Val<=max_val))
       }else{
-        cs_dat<-subset(cs_dat2, Val>=min_val & Val<=max_val)
+        cs_dat<-subset(cs_dat2, Atom_ID == atom & Val>=min_val & Val<=max_val)
       }
     }
-    if (type=='count'){
-      plt<-ggplot2::ggplot(cs_dat)+
-        ggplot2::geom_histogram(ggplot2::aes(x=Val,color=Atom_ID,fill=Atom_ID),binwidth=bw,position = 'identity',alpha=0.7)+
-        ggplot2::xlab("Chemical shift")+
-        ggplot2::ylab("Count")+
-        ggplot2::labs(color="",fill="")
-    } else{
-      plt<-ggplot2::ggplot(cs_dat)+
-        ggplot2::geom_density(ggplot2::aes(x=Val,color=Atom_ID,fill=Atom_ID),alpha=0.7,trim=T)+
-        ggplot2::xlab("Chemical shift")+
-        ggplot2::ylab("Density")+
-        ggplot2::labs(color="",fill="")
-    }
-    if (interactive){
-      plt2<-plotly::plotly_build(plt)
+    }else if (res == "*"){
+
+        for (atom in unique(cs_dat2$Comp_ID)){
+          ss<-stats::sd(subset(cs_dat2,Comp_ID==atom)$Val)
+          m<-mean(subset(cs_dat2,Comp_ID==atom)$Val)
+          cs_dat2$Mean[cs_dat2$Comp_ID == atom] = m
+          cs_dat2$SD[cs_dat2$Comp_ID == atom] = ss
+          min_val<-m-(ss*cutoff)
+          max_val<-m+(ss*cutoff)
+          cs_dat2$bins[cs_dat2$Comp_ID == atom]=(max_val-min_val)/bw
+          if (exists('cs_dat')){
+            cs_dat<-rbind(cs_dat,subset(cs_dat2, Comp_ID == atom & Val>=min_val & Val<=max_val))
+          }else{
+            cs_dat<-subset(cs_dat2, Comp_ID == atom & Val>=min_val & Val<=max_val)
+          }
+        }
+
+
     }else{
-      plt2<-plt
+      ss<-stats::sd(cs_dat2$Val)
+      m<-mean(cs_dat2$Val)
+      cs_dat2$Mean= m
+      cs_dat2$SD= ss
+      min_val<-m-(ss*cutoff)
+      max_val<-m+(ss*cutoff)
+      cs_dat2$bins=(max_val-min_val)/bw
+      cs_dat<-subset(cs_dat2, Val>=min_val & Val<=max_val)
+
     }
+    cs_dat$Info = paste0("Mean=",round(cs_dat$Mean,2),";","SD=",round(cs_dat$SD,2))
+    if (type=='count'){
+      if (res=="*" & atm == "*"){
+        plt<-suppressWarnings( plotly::plot_ly(x = cs_dat$Val,type = "histogram", color = cs_dat$UID,alpha = 0.6, nbinsx = cs_dat$bins,text = cs_dat$Info, visible = F) %>% plotly::layout(barmode = "overlay",xaxis = list(title="Chemical shift",zeroline = F),yaxis = list(title="Count",zeroline = F)))
+      }else if (atm=="*") {
+      plt<-suppressWarnings(plotly::plot_ly(x = cs_dat$Val,type = "histogram", color = cs_dat$Atom_ID,alpha = 0.6, nbinsx = cs_dat$bins,text = cs_dat$Info) %>% plotly::layout(barmode = "overlay",xaxis = list(title="Chemical shift",zeroline = F),yaxis = list(title="Count",zeroline = F)))
+      }else if (res=="*") {
+        plt<-suppressWarnings(plotly::plot_ly(x = cs_dat$Val,type = "histogram", color = cs_dat$Comp_ID,alpha = 0.6, nbinsx = cs_dat$bins,text = cs_dat$Info) %>% plotly::layout(barmode = "overlay",xaxis = list(title="Chemical shift",zeroline = F),yaxis = list(title="Count",zeroline = F)))
+      }else{
+        plt<-suppressWarnings(plotly::plot_ly(x = cs_dat$Val,type = "histogram",alpha = 0.6, nbinsx = cs_dat$bins,text = cs_dat$Info) %>% plotly::layout(barmode = "overlay",xaxis = list(title="Chemical shift",zeroline = F),yaxis = list(title="Count",zeroline = F)))
+      }
+      # plt<-ggplot2::ggplot(cs_dat)+
+      #   ggplot2::geom_histogram(ggplot2::aes(x=Val,color=Atom_ID,fill=Atom_ID),binwidth=bw,position = 'identity',alpha=0.7)+
+      #   ggplot2::xlab("Chemical shift")+
+      #   ggplot2::ylab("Count")+
+      #   ggplot2::labs(color="",fill="")
+    } else{
+      if (res=="*" & atm == "*"){
+        plt<-suppressWarnings(plotly::plot_ly(x = cs_dat$Val,type = "histogram",color = cs_dat$UID,histnorm = "probability",alpha = 0.6,visible = F) %>% plotly::layout(barmode = "overlay",xaxis = list(title="Chemical shift",zeroline = F),yaxis = list(title="Probability density",zeroline = F)))
+      }else if (atm == "*") {
+      plt<-suppressWarnings(plotly::plot_ly(x = cs_dat$Val,type = "histogram",color = cs_dat$Atom_ID,histnorm = "probability",alpha = 0.6) %>% plotly::layout(barmode = "overlay",xaxis = list(title="Chemical shift",zeroline = F),yaxis = list(title="Probability density",zeroline = F)))
+      }else if (res == "*"){
+        plt<-suppressWarnings(plotly::plot_ly(x = cs_dat$Val,type = "histogram",color = cs_dat$Comp_ID,histnorm = "probability",alpha = 0.6) %>% plotly::layout(barmode = "overlay",xaxis = list(title="Chemical shift",zeroline = F),yaxis = list(title="Probability density",zeroline = F)))
+      }else{
+        plt<-suppressWarnings(plotly::plot_ly(x = cs_dat$Val,type = "histogram",histnorm = "probability",alpha = 0.6) %>% plotly::layout(barmode = "overlay",xaxis = list(title="Chemical shift",zeroline = F),yaxis = list(title="Probability density",zeroline = F)))
+      }
+      # plt<-ggplot2::ggplot(cs_dat)+
+      #   ggplot2::geom_density(ggplot2::aes(x=Val,color=Atom_ID,fill=Atom_ID),alpha=0.7,trim=T)+
+      #   ggplot2::xlab("Chemical shift")+
+      #   ggplot2::ylab("Density")+
+      #   ggplot2::labs(color="",fill="")
+    }
+    plt2<-plt
   }
   return(plt2)
   })
@@ -665,7 +834,7 @@ chemical_shift_hist<-function(res='*',atm='*',type='count',bw=0.1,cutoff=8,inter
 #'#plots the histogram of all atoms of ALA
 #'#plt<-chemical_shift_hists(c("GLY-H*","ALA-HA"),type='density')
 #'#plots the density plot
-#'@seealso \code{\link{fetch_res_chemical_shifts}},\code{\link{filter_residue}} and \code{\link{chemical_shift_corr}}
+#'@seealso \code{\link{fetch_res_chemical_shifts}},\code{\link{filter_residue}} and \code{\link{chem_shift_corr}} and \code{\link{atom_chem_shift_corr}}
 chemical_shift_hists<-function(atm=NA,type='count',bw=0.1,cutoff=8,interactive=TRUE){
   for (atom in atm){
     res<-strsplit(atom,"-")[[1]][1]
@@ -678,12 +847,14 @@ chemical_shift_hists<-function(atm=NA,type='count',bw=0.1,cutoff=8,interactive=T
   }
   with(cs_dat2,{
   #cs_dat2<-fetch_res_chemical_shifts(res,atm)
+
   if (all(is.na(cs_dat2))){
     return(NA)
   }else{
     for (atom in unique(cs_dat2$Atom_ID)){
       ss<-stats::sd(subset(cs_dat2,Atom_ID==atom)$Val)
       m<-mean(subset(cs_dat2,Atom_ID==atom)$Val)
+
       min_val<-m-(ss*cutoff)
       max_val<-m+(ss*cutoff)
       if (exists('cs_dat')){
@@ -736,63 +907,70 @@ chemical_shift_hists<-function(atm=NA,type='count',bw=0.1,cutoff=8,interactive=T
 #'plot_hsqc<-HSQC_15N(c(17074,17076,17077),interactive=FALSE)
 #'#example for non interactive plots
 #'@seealso \code{\link{HSQC_13C}} and \code{\link{TOCSY}}
+#'@importFrom plotly %>%
 HSQC_15N<-function(idlist,type='scatter',interactive=TRUE){
   cs_data<-fetch_entry_chemical_shifts(idlist)
   if (all(is.na(cs_data))){
     return(NA)
-  }else{
-  hsqc_data<-convert_cs_to_n15hsqc(cs_data)
-  with(hsqc_data,{
-  if (all(is.na(hsqc_data))){
-    warning('No data')
-    plt2<-NA}
-  else{
-  hsqc_data$Info=NA
-  hsqc_data$Info=paste(hsqc_data$Comp_index_ID,hsqc_data$Entity_ID,hsqc_data$Comp_ID_H,hsqc_data$Assigned_chem_shift_list_ID,sep=",")
-  if (type=='scatter'){
-    if (length(idlist)>1){
-      if (interactive){
-    plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-    ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Entry_ID,label=Info))+ggplot2::labs(color=""))
-      #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
-      }else{
-        plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-          ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Entry_ID,label=Info))+
-          ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
-      }
     }else{
-      if (interactive){
-      plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-        ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Comp_ID_H,label=Info))+ggplot2::labs(color=""))
-        #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
-      }else{
-        plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-          ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Comp_ID_H,label=Info))+
-          ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
-      }
-    }
+      hsqc_data<-convert_cs_to_n15hsqc(cs_data)
+      with(hsqc_data,{
+        if (all(is.na(hsqc_data))){
+          warning('No data')
+          plt2<-NA}
+        else{
+          hsqc_data$Info=NA
+          hsqc_data$Info=paste(hsqc_data$Comp_index_ID,hsqc_data$Entity_ID,hsqc_data$Comp_ID_H,hsqc_data$Assigned_chem_shift_list_ID,sep=",")
+          if (type=='scatter'){
+            if (length(idlist)>1){
+              if (interactive){
+                plt<- plotly::plot_ly(x=hsqc_data$H,y=hsqc_data$N, color = hsqc_data$Entry_ID, text = hsqc_data$Info, type = "scatter", mode = "markers") %>%
+                  plotly::layout(xaxis = list(autorange = "reversed",title="H",zeroline = F),yaxis = list(autorange = "reversed",title="N",zeroline = F) )
+                #plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
+                # ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Entry_ID,label=Info))+ggplot2::labs(color=""))
+                # ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
+                }
+              else{
+                plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
+                                        ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Entry_ID,label=Info))+
+                                        ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
+                }
+              }
+            else{
+              if (interactive){
+                plt<-plotly::plot_ly(x=hsqc_data$H,y=hsqc_data$N, color = hsqc_data$Comp_ID_H, text = hsqc_data$Info, type = "scatter", mode = "markers") %>%
+                  plotly::layout(xaxis = list(autorange = "reversed",title="H",zeroline = F),yaxis = list(autorange = "reversed",title="N",zeroline = F))
+              #plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
+              # ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Comp_ID_H,label=Info))+ggplot2::labs(color=""))
+              # ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
+                }
+              else{
+                plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
+                                        ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Comp_ID_H,label=Info))+
+                                        ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
+                }
+            }
+            }
+          else{
+            if (interactive){
+              plt<- plotly::plot_ly(x=hsqc_data$H,y=hsqc_data$N,color = hsqc_data$Entry_ID,text = hsqc_data$Info, type = "scatter", mode = "markers") %>%
+                plotly::add_lines(split = hsqc_data$Comp_index_ID,color="x" ,showlegend=F) %>%
+                plotly::layout(xaxis = list(autorange = "reversed",title="H",zeroline = F),yaxis = list(autorange = "reversed",title="N",zeroline = F) )
+                #plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
+                #ggplot2::geom_line(ggplot2::aes(x=H,y=N,group=Comp_index_ID,label=Info))+
+                #ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Entry_ID,label=Info))+ggplot2::labs(color=""))
+                # ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
+              }
+            else{
+              plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
+                                      ggplot2::geom_line(ggplot2::aes(x=H,y=N,group=Comp_index_ID,label=Info))+
+                                      ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Entry_ID,label=Info))+
+                                      ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
+            }
+            }
 
-  } else {
-    if (interactive){
-    plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-    ggplot2::geom_line(ggplot2::aes(x=H,y=N,group=Comp_index_ID,label=Info))+
-    ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Entry_ID,label=Info))+ggplot2::labs(color=""))
-     # ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
-    }else{
-      plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-        ggplot2::geom_line(ggplot2::aes(x=H,y=N,group=Comp_index_ID,label=Info))+
-        ggplot2::geom_point(ggplot2::aes(x=H,y=N,color=Entry_ID,label=Info))+
-        ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
-    }
-  }
-  if (interactive){
-    plt2<-plotly::plotly_build(plt)
-    plt2$x$layout$xaxis$autorange = "reversed"
-    plt2$x$layout$yaxis$autorange = "reversed"}
-  else{
-    plt2<-plt
-  }
-  }
+        }
+        plt2<-plt
   return(plt2)})}
 }
 
@@ -817,8 +995,8 @@ HSQC_15N<-function(idlist,type='scatter',interactive=TRUE){
 HSQC_13C<-function(idlist,type='scatter',interactive=TRUE){
   cs_data<-fetch_entry_chemical_shifts(idlist)
   if (all(is.na(cs_data))){
-    return(NA)
-  }else{
+    return(NA)}
+  else{
     hsqc_data<-convert_cs_to_c13hsqc(cs_data)
     with(hsqc_data,{
       if (all(is.na(hsqc_data))){
@@ -830,46 +1008,51 @@ HSQC_13C<-function(idlist,type='scatter',interactive=TRUE){
         if (type=='scatter'){
           if (length(idlist)>1){
             if (interactive){
+              plt<- plotly::plot_ly(x=hsqc_data$H,y=hsqc_data$C, color = hsqc_data$Entry_ID, text = hsqc_data$Info, type = "scatter", mode = "markers") %>%
+                plotly::layout(xaxis = list(autorange = "reversed",title="H",zeroline = F),yaxis = list(autorange = "reversed",title="C",zeroline = F) )
+              #plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
+               #                       ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Entry_ID,label=Info))+ggplot2::labs(color=""))
+                                      #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
+              }
+            else{
               plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-                ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Entry_ID,label=Info))+ggplot2::labs(color=""))
-              #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
-            }else{
-              plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-                ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Entry_ID,label=Info))+
-                ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
+                                      ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Entry_ID,label=Info))+
+                                      ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
+              }
             }
-          }else{
+          else{
             if (interactive){
+              plt<-plotly::plot_ly(x=hsqc_data$H,y=hsqc_data$C, color = hsqc_data$Comp_ID_H, text = hsqc_data$Info, type = "scatter", mode = "markers") %>%
+                plotly::layout(xaxis = list(autorange = "reversed",title="H",zeroline = F),yaxis = list(autorange = "reversed",title="C",zeroline = F))
+              #plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
+                                      #ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Comp_ID_H,label=Info))+ggplot2::labs(color=""))
+                                      #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
+              }
+            else{
               plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-                ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Comp_ID_H,label=Info))+ggplot2::labs(color=""))
-              #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
-            }else{
-              plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-                ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Comp_ID_H,label=Info))+
-                ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
+                                      ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Comp_ID_H,label=Info))+
+                                      ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
+              }
             }
           }
-
-        } else {
+        else{
           if (interactive){
-            plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-              ggplot2::geom_line(ggplot2::aes(x=H,y=C,group=Comp_index_ID,label=Info))+
-              ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Entry_ID,label=Info))+ggplot2::labs(color=""))
+            plt<- plotly::plot_ly(x=hsqc_data$H,y=hsqc_data$C,color = hsqc_data$Entry_ID,text = hsqc_data$Info, type = "scatter", mode = "markers") %>%
+              plotly::add_lines(split = hsqc_data$Comp_index_ID,color="x" ,showlegend=F) %>%
+              plotly::layout(xaxis = list(autorange = "reversed",title="H",zeroline = F),yaxis = list(autorange = "reversed",title="C",zeroline = F) )
+            #plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
+                                    #ggplot2::geom_line(ggplot2::aes(x=H,y=C,group=Comp_index_ID,label=Info))+
+                                    #ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Entry_ID,label=Info))+ggplot2::labs(color=""))\
             # ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()
-          }else{
+            }
+          else{
             plt<-suppressWarnings(ggplot2::ggplot(hsqc_data)+
-              ggplot2::geom_line(ggplot2::aes(x=H,y=C,group=Comp_index_ID,label=Info))+
-              ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Entry_ID,label=Info))+
-              ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
+                                    ggplot2::geom_line(ggplot2::aes(x=H,y=C,group=Comp_index_ID,label=Info))+
+                                    ggplot2::geom_point(ggplot2::aes(x=H,y=C,color=Entry_ID,label=Info))+
+                                    ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+ggplot2::labs(color=""))
           }
         }
-        if (interactive){
-          plt2<-plotly::plotly_build(plt)
-          plt2$x$layout$xaxis$autorange = "reversed"
-          plt2$x$layout$yaxis$autorange = "reversed"}
-        else{
-          plt2<-plt
-        }
+        plt2<-plt
       }
       return(plt2)})}
 }
@@ -900,10 +1083,12 @@ TOCSY<-function(idlist,interactive=TRUE){
       tocsy_data$Info=paste(tocsy_data$Comp_index_ID,tocsy_data$Entity_ID,tocsy_data$Comp_ID.x,tocsy_data$Atom_ID.x,tocsy_data$Atom_ID.y,tocsy_data$Assigned_chem_shift_list_ID,sep=",")
       if (length(idlist)>1){
         if (interactive){
-          plt<-suppressWarnings(ggplot2::ggplot(tocsy_data)+
-                                  ggplot2::geom_point(ggplot2::aes(x=Val.x,y=Val.y,color=Entry_ID,label=Info))+
+          plt<- plotly::plot_ly(x=tocsy_data$Val.x,y=tocsy_data$Val.y, color = tocsy_data$Entry_ID, text = tocsy_data$Info, type = "scatter", mode = "markers") %>%
+            plotly::layout(xaxis = list(autorange = "reversed",title="H",zeroline = F),yaxis = list(autorange = "reversed",title="H",zeroline = F) )
+          #plt<-suppressWarnings(ggplot2::ggplot(tocsy_data)+
+           #                       ggplot2::geom_point(ggplot2::aes(x=Val.x,y=Val.y,color=Entry_ID,label=Info))+
                                   #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+
-                                  ggplot2::xlab("H")+ggplot2::ylab("H")+ggplot2::labs(color=""))
+            #                      ggplot2::xlab("H")+ggplot2::ylab("H")+ggplot2::labs(color=""))
         }else{
           plt<-suppressWarnings(ggplot2::ggplot(tocsy_data)+
                                   ggplot2::geom_point(ggplot2::aes(x=Val.x,y=Val.y,color=Entry_ID,label=Info))+
@@ -912,10 +1097,12 @@ TOCSY<-function(idlist,interactive=TRUE){
         }
       }else{
         if (interactive){
-          plt<-suppressWarnings(ggplot2::ggplot(tocsy_data)+
-                                  ggplot2::geom_point(ggplot2::aes(x=Val.x,y=Val.y,color=Comp_ID.x,label=Info))+
+          plt<-plotly::plot_ly(x=tocsy_data$Val.x,y=tocsy_data$Val.y, color = tocsy_data$Comp_ID_H, text = tocsy_data$Info, type = "scatter", mode = "markers") %>%
+            plotly::layout(xaxis = list(autorange = "reversed",title="H",zeroline = F),yaxis = list(autorange = "reversed",title="H",zeroline = F))
+         # plt<-suppressWarnings(ggplot2::ggplot(tocsy_data)+
+          #                        ggplot2::geom_point(ggplot2::aes(x=Val.x,y=Val.y,color=Comp_ID.x,label=Info))+
                                   #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+
-                                  ggplot2::xlab("H")+ggplot2::ylab("H")+ggplot2::labs(color=""))
+           #                       ggplot2::xlab("H")+ggplot2::ylab("H")+ggplot2::labs(color=""))
         }else{
           plt<-suppressWarnings(ggplot2::ggplot(tocsy_data)+
                                   ggplot2::geom_point(ggplot2::aes(x=Val.x,y=Val.y,color=Comp_ID.x,label=Info))+
@@ -923,16 +1110,10 @@ TOCSY<-function(idlist,interactive=TRUE){
                                   ggplot2::xlab("H")+ggplot2::ylab("H"))
         }
       }
-      if (interactive){
-        plt2<-plotly::plotly_build(plt)
-        plt2$x$layout$xaxis$autorange = "reversed"
-        plt2$x$layout$yaxis$autorange = "reversed"}
-      else{
-        plt2<-plt
-      }
+     plt2<-plt
     }
-    return(plt2)
-  })})
+    return(plt2) })})
+
 }
 
 
@@ -947,12 +1128,12 @@ TOCSY<-function(idlist,interactive=TRUE){
 #'@param type 'c' for contour plot and 's' for scatter plot default 'c'.scatter plot will be slow and heavy for large data set
 #'@param interactive TRUE/FALSE default=TRUE
 #'@return plot object
-#'@export chemical_shift_corr
+#'@export chem_shift_corr
 #'@examples
-#'plt<-chemical_shift_corr('HE21','HE22')
+#'#plt<-chem_shift_corr('HE21','HE22')
 #'#plots the chemical shift distribution between HE21 and HE22
-#'@seealso \code{\link{fetch_atom_chemical_shifts}}
-chemical_shift_corr<-function(atom1,atom2,res=NA,type="c",interactive=TRUE){
+#'@seealso \code{\link{fetch_atom_chemical_shifts}} and \code{\link{atom_chem_shift_corr}}
+chem_shift_corr<-function(atom1,atom2,res=NA,type="c",interactive=TRUE){
   at1_cs<-fetch_atom_chemical_shifts(atom1)
   at2_cs<-fetch_atom_chemical_shifts(atom2)
   if (all(is.na(at1_cs)) | all(is.na(at2_cs))){
@@ -985,13 +1166,13 @@ chemical_shift_corr<-function(atom1,atom2,res=NA,type="c",interactive=TRUE){
   cs$Info=paste(cs$Comp_index_ID,cs$Entity_ID,cs$Atom_ID_1,cs$Atom_ID_2,cs$Assigned_chem_shift_list_ID,sep=",")
   if (type=="c"){
     if (interactive){
-  plt<-ggplot2::ggplot(cs)+
-    #ggplot2::geom_density_2d(ggplot2::aes(x=eval(as.name(atom1)),y=eval(as.name(atom2)),color=Comp_ID_1))+
-    #ggplot2::stat_density_2d(geom='polygon',ggplot2::aes(x=eval(as.name(atom1)),y=eval(as.name(atom2)),fill= Comp_ID_1),bins=500)+
-    ggplot2::geom_density_2d(ggplot2::aes(x=Val.x,y=Val.y,color=Comp_ID_1),bins=100)+
-    #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+
-    ggplot2::xlab(atom1)+
-    ggplot2::ylab(atom2)+ggplot2::labs(color="")
+   plt<-ggplot2::ggplot(cs)+
+     #ggplot2::geom_density_2d(ggplot2::aes(x=eval(as.name(atom1)),y=eval(as.name(atom2)),color=Comp_ID_1))+
+     #ggplot2::stat_density_2d(geom='polygon',ggplot2::aes(x=eval(as.name(atom1)),y=eval(as.name(atom2)),fill= Comp_ID_1),bins=500)+
+     ggplot2::geom_density_2d(ggplot2::aes(x=Val.x,y=Val.y,color=Comp_ID_1),bins=100)+
+     #ggplot2::scale_y_reverse()+ggplot2::scale_x_reverse()+
+     ggplot2::xlab(atom1)+
+     ggplot2::ylab(atom2)+ggplot2::labs(color="")
     }else{
       plt<-ggplot2::ggplot(cs)+
         #ggplot2::geom_density_2d(ggplot2::aes(x=eval(as.name(atom1)),y=eval(as.name(atom2)),color=Comp_ID_1))+
@@ -1029,6 +1210,80 @@ chemical_shift_corr<-function(atom1,atom2,res=NA,type="c",interactive=TRUE){
   }
 }
 
+
+
+
+#'Chemical shift correlation between given pair of atoms in a given amino acid (or) nucleic acid
+#'
+#'Plots the correlated chemical shift distribution of given pair of atoms in a single residue  from BMRB database.
+#'By default it will generate interactive graphics using plotly library
+#'@param atom1 atom name in NMR-STAR nomenclature like CA,CB2
+#'@param atom2 atom name in NMR-STAR nomenclature like HA,HB2
+#'@param res residue name in NMR-STAR nomenclature like ALA
+#'@return plot object
+#'@export atom_chem_shift_corr
+#'@examples
+#'#plt<-atom_chem_shift_corr('HE21','HE22','GLN')
+#'#plots the chemical shift distribution between HE21 and HE22
+#'@seealso \code{\link{fetch_res_chemical_shifts}} and \code{\link{chem_shift_corr}}
+atom_chem_shift_corr<-function(atom1,atom2,res=NA){
+  if (is.na(res)){
+    stop("Residue must be specified")
+  }
+  else{
+    css2<-fetch_res_chemical_shifts(res)
+  with(css2,{if (grepl("\\*",atom1)){
+    cs1<-subset(css2,grepl(paste0("^",sub("\\*","",atom1)),Atom_ID))
+  }else{
+      cs1<-subset(css2,Atom_ID == atom1)
+  }
+  if (grepl("\\*",atom2)){
+    cs2<-subset(css2,grepl(paste0("^",sub("\\*","",atom2)),Atom_ID))
+  }else{
+  cs2<-subset(css2,Atom_ID == atom2)
+  }
+  if (all(is.na(cs1)) | all(is.na(cs2))){
+    stop('One of the input atom has no data')
+    plt2<-NA
+    return(plt2)}
+  else{
+    with(cs1,{
+      with(cs2, {
+        cs<-merge(cs1,cs2,by=c('Entry_ID','Entity_ID','Comp_index_ID','Assigned_chem_shift_list_ID'))[,c("Entry_ID","Comp_index_ID","Entity_ID","Assigned_chem_shift_list_ID","Comp_ID.x","Comp_ID.y","Atom_ID.x","Atom_ID.y","Val.x","Val.y")]
+        names(cs)[names(cs)=="Comp_ID.x"]<-"Comp_ID_1"
+        names(cs)[names(cs)=="Comp_ID.y"]<-"Comp_ID_2"
+        names(cs)[names(cs)=="Atom_ID.x"]<-"Atom_ID_1"
+        names(cs)[names(cs)=="Atom_ID.y"]<-"Atom_ID_2"
+        xl1=mean(cs$Val.x)-5*stats::sd(cs$Val.x)
+        xl2=mean(cs$Val.x)+5*stats::sd(cs$Val.x)
+        yl1=mean(cs$Val.y)-5*stats::sd(cs$Val.y)
+        yl2=mean(cs$Val.y)+5*stats::sd(cs$Val.y)
+        cs<-subset(cs,(Val.x>xl1 & Val.x<xl2 & Val.y>yl1 & Val.y<yl2))
+        #names(cs)[names(cs)=="Val.x"]<-atom1
+        #names(cs)[names(cs)=="Val.y"]<-atom2
+        cs$Info=paste(cs$Comp_index_ID,cs$Entity_ID,cs$Atom_ID_1,cs$Atom_ID_2,cs$Assigned_chem_shift_list_ID,sep=",")
+            plt<- plotly::subplot(
+              plotly::plot_ly(x = cs$Val.x,type = "histogram" , text = cs$Info, alpha = 0.7,showlegend = F),
+              suppressWarnings( plotly::plotly_empty(type = "scatter", mode = "markders")),
+              plotly::plot_ly(x = cs$Val.x, y = cs$Val.y, type = "histogram2dcontour", showscale = FALSE, contours = list(coloring = "lines")) %>%
+                plotly::layout(xaxis = list(title=atom1,zeroline = F),yaxis = list(title=atom2,zeroline = F)),
+              plotly::plot_ly(y = cs$Val.y, type = "histogram", text = cs$Info, alpha = 0.7,showlegend = F),
+              nrows = 2, heights = c(0.2, 0.8), widths = c(0.8, 0.2), margin = 0,
+              shareX = TRUE, shareY = TRUE, titleX = TRUE, titleY = TRUE
+            )
+        return(plt)
+      })})
+  }})
+  }
+}
+
+
+
+
+
+
+
+
 #'Filter for standard 20 amino acids
 #'
 #'Filters out non standard amino acids using Comp_ID. The data frame should contain three letter anio acid code in COMP_ID column.
@@ -1036,7 +1291,7 @@ chemical_shift_corr<-function(atom1,atom2,res=NA,type="c",interactive=TRUE){
 #'@return R data frame that contains information from only standard 20 amino acids.
 #'@export filter_residue
 #'@examples
-#'df<-filter_residue(fetch_atom_chemical_shifts("CG2"))
+#'#df<-filter_residue(fetch_atom_chemical_shifts("CG2"))
 #'#Downloads all CG2 chemical shifts and removes non standard amino acids
 #'@seealso \code{\link{fetch_atom_chemical_shifts}}
 filter_residue<-function(df){

@@ -16,10 +16,9 @@ R data frame that contains information from only standard 20 amino acids.
 Filters out non standard amino acids using Comp_ID. The data frame should contain three letter anio acid code in COMP_ID column.
 }
 \examples{
-df<-filter_residue(fetch_atom_chemical_shifts("CG2"))
+#df<-filter_residue(fetch_atom_chemical_shifts("CG2"))
 #Downloads all CG2 chemical shifts and removes non standard amino acids
 }
 \seealso{
 \code{\link{fetch_atom_chemical_shifts}}
 }
-
