@@ -1,6 +1,6 @@
-c35e1b2463f2938ab0a24cd2115c0efb *DESCRIPTION
-76b17dc60a30bb3a94f80d1f609cdcb4 *NAMESPACE
-3336f79dd7caeda78fc60e3d2f0fb7c5 *R/RBMRB.R
+fabdf7d7a9902189ce7ca8281841b864 *DESCRIPTION
+1b51f32125cf468489161a1a388c1745 *NAMESPACE
+88e2ef9afb882f0c653e969bdf15e09c *R/RBMRB.R
 632fdf31e3941d8ec5fe64f436c0a672 *man/HSQC_13C.Rd
 96f6f3d021c02b79f1c0f48eb19b537e *man/HSQC_15N.Rd
 bea17b11b5c3b9e2e515df7429586611 *man/TOCSY.Rd
@@ -17,5 +17,6 @@ c75bf2985f454dd1c50d6ddd77de2afa *man/chemical_shift_hists.Rd
 92ed222a2a30f345ef2c2f0444980cff *man/fetch_entry_chemical_shifts.Rd
 925a1aa8eb1064f5dd09fd41c8d1796c *man/fetch_entry_cs.Rd
 b9f8edc86207d218fc833fcaa2745c5f *man/fetch_res_chemical_shifts.Rd
-f7b8acc2d496e0fe0496eaebbb0fae89 *man/filter_residue.Rd
+90491ac1cd7e6cd7b36a8bd6399f5e62 *man/filter_outlier.Rd
+a333d74079fc98be40fbb01277c8a080 *man/filter_residue.Rd
 2467aeb32f20f7c872452a683608e5b9 *man/makeRandomString.Rd
