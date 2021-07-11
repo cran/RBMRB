@@ -15,7 +15,7 @@ fetch_entry_cs<-function(ID){
   if (length(ID)>1){
     stop("This Function takes only one ID; Use fetch_entry_chemical_shifts for a list of IDs")
   }
-  bmrb_apiurl<-paste0("http://webapi.bmrb.wisc.edu/v2/entry/",ID,"?loop=Atom_chem_shift")
+  bmrb_apiurl<-paste0("http://api.bmrb.io/v2/entry/",ID,"?loop=Atom_chem_shift")
   rate_limit <- 403
   nattempts = 0
   while ((rate_limit == 403) & (nattempts < 5)){
@@ -145,7 +145,7 @@ makeRandomString <- function()
 #'# Exports hpr.str file to BMRB API server and gets a temporary tocken
 #'@seealso \code{\link{fetch_atom_chemical_shifts}}, \code{\link{fetch_entry_chemical_shifts}} \code{\link{fetch_res_chemical_shifts}}
 export_star_data<-function(filename){
-  bmrb_apiurl<-"http://webapi.bmrb.wisc.edu/v2/entry/"
+  bmrb_apiurl<-"http://api.bmrb.io/v2/entry/"
   query=rjson::toJSON(list(method='store',jsonrpc='2.0',params=list(data=readChar(filename, file.info(filename)$size)),id=1))
   rawdata<-httr::POST(bmrb_apiurl,body=readChar(filename, file.info(filename)$size),httr::add_headers(Application = "RBMRB V2.1.0"))
   c<-rjson::fromJSON(httr::content(rawdata,'text',encoding = 'UTF-8'))
@@ -176,7 +176,7 @@ export_star_data<-function(filename){
 #'# Downloads C1 chemical shifts from metabolomics database at BMRB
 #'@seealso \code{\link{fetch_entry_chemical_shifts}},\code{\link{fetch_res_chemical_shifts}},\code{\link{filter_residue}} and \code{\link{chem_shift_corr}} and \code{\link{atom_chem_shift_corr}}
 fetch_atom_chemical_shifts<-function(atom="*",db='macromolecules'){
-  bmrb_api<-paste0("http://webapi.bmrb.wisc.edu/v2/search/chemical_shifts?atom_id=",atom,"&database=",db)
+  bmrb_api<-paste0("http://api.bmrb.io/v2/search/chemical_shifts?atom_id=",atom,"&database=",db)
   rate_limit <- 403
   nattempts = 0
   while ((rate_limit == 403)& (nattempts < 5)){
@@ -220,7 +220,7 @@ fetch_res_chemical_shifts<-function(res='*',atm='*'){
     dat_frame<-filter_residue(fetch_atom_chemical_shifts(atm))
   }else{
   db='macromolecules'
-  bmrb_api<-paste0("http://webapi.bmrb.wisc.edu/v2/search/chemical_shifts?comp_id=",res,"&atom_id=",atm,"&database=",db)
+  bmrb_api<-paste0("http://api.bmrb.io/v2/search/chemical_shifts?comp_id=",res,"&atom_id=",atm,"&database=",db)
   rate_limit <- 403
   nattempts = 0
   while ((rate_limit == 403)&(nattempts < 5)){
